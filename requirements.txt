@@ -1,0 +1,5 @@
+garminconnect>=0.3.2,<0.4
+fastapi>=0.141
+uvicorn[standard]>=0.53
+python-dotenv>=1.0
+requests>=2.31
