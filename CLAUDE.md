@@ -53,37 +53,41 @@ A baseline needs at least 7 real observations in the window (`MIN_BASELINE_DAYS`
 or it reports nothing. A percentage computed from four scattered days is noise
 with a number on it.
 
-## Training load comes from Garmin, decided on the evidence
+## The training load view was removed
 
-`activities.garmin_load` is the figure everything uses. It is Garmin's own
-EPOC-based training load, selected in `metrics.effective_loads()`, which is the
-single place that decides. No endpoint or chart gets its own opinion.
+Removed Sep 2026. The acute:chronic ratio is built for someone training
+several times a week, and it does not survive a sparser, more irregular
+pattern: the 28-day average collapses towards zero and one ordinary session
+reads as a spike. Guarded behind a minimum session count, it spent most of its
+life withholding itself, which is an honest answer but not a useful view. The
+first commit has the whole thing if the training pattern ever changes.
 
-The first version computed Banister TRIMP instead, on the reasoning that
-Garmin's scale is undocumented and absent on the activity types in this
-account. Checking against live data falsified the second half: it is present on
-all but the sessions recorded with no heart rate at all, where nothing can be
-computed either way.
+What stayed: activities are still ingested and listed, `metrics.effective_loads()`
+still attaches a load figure to each one, and "Training load" is still an
+option in the correlation panel, because whether a round of golf moves the next
+night's HRV is a real question.
 
-It also showed the two models rank the same activities in **opposite orders**.
-TRIMP is duration-weighted, so several hours of low-intensity movement outweighs
-a short session near maximum heart rate. Garmin's is EPOC-based and does not.
-They do not disagree about magnitude, they disagree about which session was the
-hard one, and the body agrees with Garmin. Seba chose Garmin's on 20 Sep 2026.
-Do not switch back without asking him.
+That load figure is **Garmin's own** `activityTrainingLoad`, not a formula. The
+first version computed Banister TRIMP, on the reasoning that Garmin's number is
+undocumented and absent on the activity types in this account. Checking against
+the live data falsified the second half: it is present on all but the sessions
+recorded with no heart rate at all, where nothing can be computed either way.
 
-TRIMP is still computed and stored in `activities.computed_load` so the two
-stay comparable, but it drives nothing.
+The two models also ranked the same activities in **opposite orders**. TRIMP is
+duration-weighted, so several hours of low-intensity movement outweighs a short
+session at near-maximum heart rate. Garmin's is EPOC-based and does not. They do
+not disagree about magnitude, they disagree about which session was the hard one,
+and the body agrees with Garmin. Do not switch back without asking Seba.
 
-A session Garmin scored no load for is estimated from the median load per
-minute of his own sessions of that type, and carries `load_basis =
-'estimated'` so the estimate is never mistaken for a measurement. The activity
-table marks those rows "est". The estimate is derived at read time, not
-stored, so it improves as more sessions arrive.
+A session Garmin scored nothing for is estimated from the median load per minute
+of his own sessions of that type, carries `load_basis = 'estimated'`, and is
+marked "est" in the table. The estimate is derived at read time, so it improves
+as more sessions arrive.
 
-`HR_MAX` in `.env` should be the measured peak from real hard sessions, not
-220-minus-age, which was meaningfully wrong here. It now only feeds the TRIMP
-figure kept for comparison, so it no longer moves anything the dashboard shows.
+`HR_MAX` in `.env` should be a measured peak taken from real hard sessions, not
+220-minus-age, which was meaningfully wrong here and overstated every load
+figure. It now feeds only the TRIMP figure kept for comparison, so it moves
+nothing the dashboard shows.
 
 ## Missing data is recorded, never a silent NULL
 
@@ -169,10 +173,10 @@ figure, and the deviation chart states which direction is good for that metric.
 
 ## Chart rules that are not negotiable
 
-**No dual-axis charts.** Training load and the acute:chronic ratio have
-unrelated units. On twin y-axes the arbitrary alignment of the two scales
-invents a relationship that is not in the data. They are two charts stacked
-over a shared x-axis, and the first version of this dashboard got it wrong.
+**No dual-axis charts.** The training load chart originally put load and the
+acute:chronic ratio on twin y-axes, where the arbitrary alignment of two scales
+invents a relationship that is not in the data. It was split into two charts
+over a shared x-axis. That chart is gone now, but the rule is not.
 
 **Grids are solid hairlines, never dashed.** Dashing reads as "threshold" or
 "projection" when it is only a grid. Dashes are reserved for reference series
@@ -185,10 +189,11 @@ named by its heading and gets none.
 numbers" toggle that swaps it for a table. A tooltip is never the only route
 to a value.
 
-**The acute:chronic ratio is withheld for the first 28 days.** Without that
-guard the start of any backfill shows a ratio of 4, because the chronic average
-is dividing by days that do not exist. It read as a training spike that never
-happened.
+**A derived figure is withheld until it has the history it needs.** A baseline
+needs 7 real readings in its window; the acute:chronic ratio, before it was
+removed, needed 28 days behind it and 4 sessions inside them. Without those
+guards the start of any backfill produces confident numbers computed over days
+that do not exist. Apply the same rule to anything added later.
 
 ## Local only
 
@@ -222,19 +227,20 @@ named two sports; the account held three different ones. Check what is actually
 there before writing anything that names an activity.
 
 **Overnight metrics start later than daily ones.** Sleep and HRV only exist from
-the point the watch was worn at night, months after the daily stats begin. Those
-days are correctly flagged `missing` rather than parsed as zeroes, but an early
-baseline can have nothing behind it. Trust `baseline_n` over the date range.
+the point the watch was worn at night, which is months after the daily stats
+begin. Those days are correctly flagged `missing` rather than parsed as zeroes,
+but it means an early baseline can have nothing behind it. Trust
+`baseline_n` over the date range.
 
 **The heart rate ceiling was a guess and it was wrong.** `HR_MAX` defaulted to a
 formula and the measured peak was well above it, overstating every load figure
 by around 20%. Anything with a physiological constant in it should be checked
 against the person's own data before it is trusted.
 
-**The acute:chronic ratio assumes a training density this account does not
-have.** It needs several sessions a week; on a sparser pattern the 28-day
-average collapses and one ordinary session reads as a spike. It is guarded
-behind `MIN_CHRONIC_SESSIONS` and withholds itself rather than lying.
+**A metric can be valid and still not fit.** The acute:chronic ratio is real
+sports science and it was implemented correctly. It still had to come out,
+because the training pattern it assumes is not the one in this account. Correct
+is not the same as useful.
 
 ## Open questions, unanswered
 

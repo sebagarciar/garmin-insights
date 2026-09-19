@@ -22,19 +22,6 @@ export interface MetricSnapshot extends MetricDef {
   points: Point[]
 }
 
-export interface LoadPoint {
-  date: string
-  load: number
-  acute: number
-  chronic: number | null
-  ratio: number | null
-  warmed_up: boolean
-  chronic_sessions: number
-  enough_sessions: boolean
-  zone: string | null
-  zone_label: string | null
-}
-
 export interface QualityReport {
   start: string
   end: string
@@ -48,8 +35,6 @@ export interface Overview {
   start: string
   end: string
   metrics: MetricSnapshot[]
-  load: LoadPoint[]
-  load_latest: LoadPoint | null
   quality: QualityReport
 }
 

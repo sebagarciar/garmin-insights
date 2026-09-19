@@ -87,13 +87,10 @@ def overview(days: int = Query(30, ge=7, le=365)) -> dict[str, Any]:
     start, end = window(days)
     c = conn()
     try:
-        load = metrics.training_load(c, start, end)
         return {
             "start": start.isoformat(),
             "end": end.isoformat(),
             "metrics": metrics.latest_snapshot(c, end),
-            "load": load,
-            "load_latest": load[-1] if load else None,
             "quality": metrics.quality(c, start, end),
         }
     finally:
@@ -123,18 +120,6 @@ def metric_definition(key: str) -> dict[str, Any]:
     m = metrics.METRICS[key]
     return {"key": m.key, "label": m.label, "unit": m.unit, "better": m.better,
             "precision": m.precision, "scale": m.scale}
-
-
-@app.get("/api/load")
-def load(days: int = Query(90, ge=7, le=730)) -> dict[str, Any]:
-    start, end = window(days)
-    c = conn()
-    try:
-        return {"points": metrics.training_load(c, start, end),
-                "zones": [{"from": lo, "to": hi, "zone": z, "label": t}
-                          for lo, hi, z, t in metrics.ACWR_ZONES]}
-    finally:
-        c.close()
 
 
 @app.get("/api/correlation")
@@ -246,4 +231,9 @@ if DIST.exists():
 
     @app.get("/{full_path:path}")
     def spa(full_path: str) -> FileResponse:
+        # The front end is a single page, so any other path returns it and the
+        # router sorts it out. An unknown /api path is a different matter: it
+        # is a mistake, and answering it with HTML would hide that.
+        if full_path.startswith("api/"):
+            raise HTTPException(404, f"no such endpoint: /{full_path}")
         return FileResponse(DIST / "index.html")

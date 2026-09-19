@@ -3,7 +3,6 @@ import { getActivities, getOverview, getSeries, getStatus } from './api'
 import { SyncBar } from './components/SyncBar'
 import { MetricCard } from './components/MetricCard'
 import { DeviationBars, DeviationChart } from './components/DeviationChart'
-import { LoadCharts } from './components/LoadChart'
 import { CorrelationPanel } from './components/CorrelationPanel'
 import { QualityPanel } from './components/QualityPanel'
 import { ActivityTable } from './components/ActivityTable'
@@ -104,16 +103,6 @@ export default function App() {
                 </div>
               </section>
             )}
-
-            <section className="section">
-              <div className="section__head">
-                <h2>Training load</h2>
-                <p>How hard the last week has been relative to the last month.</p>
-              </div>
-              <div className="card">
-                <LoadCharts points={overview.load} />
-              </div>
-            </section>
 
             <section className="section">
               <div className="section__head">

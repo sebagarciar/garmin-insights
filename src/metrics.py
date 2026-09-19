@@ -140,16 +140,13 @@ def latest_snapshot(
 
 
 # --------------------------------------------------------------------------
-# training load
+# activity load
+#
+# The acute:chronic workload ratio used to live here. Removed Sep 2026: it
+# assumes training several times a week, and on a sparser pattern the 28-day
+# average collapses towards zero so one ordinary session reads as a spike.
+# Recover it from the first commit if the training pattern changes.
 # --------------------------------------------------------------------------
-
-ACWR_ZONES = [
-    (0.0, 0.80, "undertraining", "Doing less than your body is used to"),
-    (0.80, 1.30, "optimal", "Load is in step with your recent normal"),
-    (1.30, 1.50, "watch", "Ramping up faster than usual"),
-    (1.50, 99.0, "spike", "Sharp jump relative to the last four weeks"),
-]
-
 
 def _load_per_minute_by_type(conn: sqlite3.Connection) -> dict[str, float]:
     """Median Garmin load per minute, per activity type, from his own history.
@@ -216,80 +213,6 @@ def daily_load(conn: sqlite3.Connection, start: date, end: date) -> dict[str, fl
             continue
         totals[a["date"]] = totals.get(a["date"], 0.0) + a["load"]
     return totals
-
-
-def daily_sessions(conn: sqlite3.Connection, start: date, end: date) -> dict[str, int]:
-    """How many activities were recorded each day."""
-    rows = conn.execute(
-        "SELECT date, COUNT(*) AS n FROM activities WHERE date BETWEEN ? AND ? GROUP BY date",
-        (start.isoformat(), end.isoformat()),
-    ).fetchall()
-    return {r["date"]: int(r["n"]) for r in rows}
-
-
-def first_observed_day(conn: sqlite3.Connection) -> date | None:
-    """The earliest day we hold any data for, across both tables."""
-    row = conn.execute(
-        "SELECT MIN(d) AS d FROM ("
-        "  SELECT MIN(date) AS d FROM daily UNION ALL SELECT MIN(date) FROM activities"
-        ")"
-    ).fetchone()
-    return date.fromisoformat(row["d"]) if row and row["d"] else None
-
-
-def training_load(conn: sqlite3.Connection, start: date, end: date) -> list[dict[str, Any]]:
-    """Acute (7 day) over chronic (28 day) load, per day.
-
-    Both are daily averages, so the ratio is unitless and reads the usual way:
-    1.0 means this week matches the last month. Rest days count as zero load,
-    which is the point of the metric.
-
-    The ratio is withheld until the 28-day window actually has 28 days of
-    history behind it. Without that guard the first weeks of any backfill show
-    a huge ratio, because the chronic average is being computed over days that
-    simply do not exist yet, and that reads as a training spike that never
-    happened.
-    """
-    lookback = start - timedelta(days=28)
-    loads = daily_load(conn, lookback, end)
-    sessions = daily_sessions(conn, lookback, end)
-    first_day = first_observed_day(conn)
-
-    out = []
-    day = start
-    while day <= end:
-        acute_days = [loads.get((day - timedelta(days=i)).isoformat(), 0.0) for i in range(7)]
-        chronic_days = [loads.get((day - timedelta(days=i)).isoformat(), 0.0) for i in range(28)]
-        acute = sum(acute_days) / 7
-        chronic = sum(chronic_days) / 28
-        warmed_up = first_day is not None and (day - timedelta(days=27)) >= first_day
-        chronic_sessions = sum(
-            sessions.get((day - timedelta(days=i)).isoformat(), 0) for i in range(28)
-        )
-        # Too few sessions and the chronic average is near zero, so any single
-        # session divides into a number that looks alarming and means nothing.
-        enough = chronic_sessions >= config.MIN_CHRONIC_SESSIONS
-        ratio = round(acute / chronic, 2) if (chronic > 0 and warmed_up and enough) else None
-        zone = label = None
-        if ratio is not None:
-            for lo, hi, z, text in ACWR_ZONES:
-                if lo <= ratio < hi:
-                    zone, label = z, text
-                    break
-        out.append({
-            "date": day.isoformat(),
-            "load": round(loads.get(day.isoformat(), 0.0), 1),
-            "acute": round(acute, 1),
-            "chronic": round(chronic, 1) if warmed_up else None,
-            "ratio": ratio,
-            "zone": zone,
-            "zone_label": label,
-            "warmed_up": warmed_up,
-            "chronic_sessions": chronic_sessions,
-            "enough_sessions": enough,
-        })
-        day += timedelta(days=1)
-    return out
 
 
 # --------------------------------------------------------------------------

@@ -33,12 +33,6 @@ BASELINE_WINDOW_DAYS = int(os.environ.get("BASELINE_WINDOW_DAYS", "30"))
 HR_MAX = int(os.environ.get("HR_MAX", "190"))
 HR_REST_FALLBACK = int(os.environ.get("HR_REST_FALLBACK", "55"))
 
-# Sessions needed inside the 28-day chronic window before the acute:chronic
-# ratio is reported at all. The metric was designed for athletes training
-# several times a week; on sparse training the chronic average collapses
-# towards zero and one ordinary session reads as a 4x spike.
-MIN_CHRONIC_SESSIONS = int(os.environ.get("MIN_CHRONIC_SESSIONS", "4"))
-
 # Politeness delay between Garmin calls, seconds. The API is unofficial and
 # a backfill makes hundreds of requests; hammering it is how accounts get
 # rate limited.

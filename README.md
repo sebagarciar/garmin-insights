@@ -5,8 +5,9 @@ not tell me: how today compares to my own normal.
 
 Garmin shows me an HRV reading. On its own that number means nothing: I have no
 idea whether it is high or low for me. This shows it as a percentage away from
-my own rolling baseline, next to how hard my week has been. Nothing leaves the
-machine except the login to Garmin itself.
+my own rolling baseline, and lets me ask whether last night's sleep is what
+moved this morning's resting heart rate. Nothing leaves the machine except the
+login to Garmin itself.
 
 ## Why
 
@@ -61,18 +62,17 @@ The command line equivalent, if the dashboard is not running:
 30-day average. Zero is an ordinary day for me. A baseline needs at least 7
 real readings in the window or it shows nothing rather than guessing.
 
-**Training load** is Garmin's own figure, which weights intensity rather than
-time on the clock: 35 minutes of intervals outranks a four hour round of golf.
-I originally computed my own from duration and heart rate, and my real data
-showed the two rank my activities in opposite orders. A session recorded
-without heart rate has no Garmin score, so it is estimated from the median load
-per minute of my own sessions of that type and marked "est" in the table.
+**Activity load** is Garmin's own training load figure, which weights intensity
+rather than time on the clock: 35 minutes of intervals outranks a four hour
+round of golf. I originally computed my own from duration and heart rate, and
+my real data showed the two rank my activities in opposite orders. A session
+recorded without heart rate has no Garmin score, so it is estimated from the
+median load per minute of my own sessions of that type and marked "est".
 
-**Acute:chronic ratio** is the last 7 days of load divided by the last 28.
-Around 1.0 means this week matches the month. It is withheld unless that month
-holds at least 4 sessions, because below that a single session divides into a
-near-zero average and reads as a spike that never happened. On my current
-training density it is usually withheld, and the dashboard says so.
+There is no training load view. I built the acute:chronic workload ratio and
+then took it out: it assumes you train several times a week, and it spends the
+rest of the time correctly refusing to answer, which is not a view worth
+keeping.
 
 **Correlation is not cause.** Two readings from the same body on the same day
 move together for plenty of reasons, and a thin sample shows patterns that a
@@ -81,7 +81,9 @@ on, and refuses to show an r below 8 pairs.
 
 **Missing days are shown as missing.** A day the watch was off is recorded as
 a gap, never as a zero, because a zero would quietly drag the baseline down.
-The data quality panel at the bottom lists every one.
+The data quality panel at the bottom lists every one. Overnight metrics only
+exist from the point I started wearing it at night, so early baselines can have
+nothing behind them and the charts say so.
 
 ## How it is built
 
@@ -115,15 +117,14 @@ rather than the obvious green.
 ## Status
 
 Running on my own account since 20 September 2026, backfilled to the start of
-the year. Every field name was checked against the
-live API key by key and the parser is correct. A full replay rebuilds the
-database from disk in under a second with no Garmin calls.
+the year. Every field name was checked against the live API key by key and the
+parser is correct. A full replay rebuilds the database from disk in under a
+second with no Garmin calls.
 
-Three things the real data changed: the training load now comes from Garmin
-rather than the formula I had written, my max heart rate is well above what the
-formula predicted, and the acute:chronic ratio turns out not to suit how often I
-actually train, so it withholds itself rather than inventing a number. Overnight
-data only starts from when I began wearing the watch at night.
+Two things the real data changed: the activity load now comes from Garmin rather
+than the formula I had written, because the two ranked my sessions in opposite
+orders, and the acute:chronic training load view came out altogether. Overnight data (sleep, HRV) only
+starts in April, when I began wearing the watch at night.
 
 Still to come: life-event tags (exam week, interviews, travel) as a filter on
 any metric, and a weekly summary written by a local model through Ollama, on a
