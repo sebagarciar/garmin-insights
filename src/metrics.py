@@ -327,3 +327,260 @@ def quality(conn: sqlite3.Connection, start: date, end: date) -> dict[str, Any]:
         "by_metric": by_metric,
         "problems": [f for f in flags if f["status"] != "ok"],
     }
+
+
+# --------------------------------------------------------------------------
+# sleep timing
+#
+# Two findings from the first full read of the archive, September 2026, both
+# of which needed a view of their own because no per-day card shows them.
+#
+# 1. Bedtime works through two separate channels, and lumping them together
+#    hides both. Sleep duration falls linearly from midnight onwards: he wakes
+#    only 32 minutes later for every hour later he falls asleep, so the rest is
+#    sleep he does not get back. The overnight physiology, by contrast, does
+#    not move at all between 22:00 and 02:00 and then steps down sharply after
+#    02:00. That is why the table reports both, and why it can exclude rough
+#    nights: with them in, the step looks like it starts at 01:00, which is an
+#    artefact of where the rough nights happen to fall.
+#
+# 2. About one night in ten looks nothing like a short night. Duration is
+#    normal, bedtime is normal, deep sleep is normal, and REM collapses while
+#    heart rate climbs. Those nights cost more than anything else in the data.
+# --------------------------------------------------------------------------
+
+# A sleep record starting inside the day is a nap or a flight, not a night.
+# Onset is read as hours from midnight, so 01:00 is 25.0 and 23:30 is 23.5.
+NAP_ONSET_START = 6.0
+NAP_ONSET_END = 20.0
+
+# Same reasoning as MIN_BASELINE_DAYS: a mean over four nights is noise with a
+# number on it, so a bucket under this many nights reports nothing at all.
+MIN_BUCKET_NIGHTS = 7
+
+# A night is rough when overnight stress is this far above his own trailing
+# normal AND REM falls to this share of it. Both thresholds are deliberately
+# on sleep *inputs*: flagging on heart rate and then reporting that flagged
+# nights have a bad heart rate would only restate the definition.
+ROUGH_STRESS_SDS = 1.0
+ROUGH_REM_SHARE = 0.7
+
+BEDTIME_BUCKETS: list[tuple[str, float | None, float | None]] = [
+    ("before 00:00", None, 24.0),
+    ("00:00 to 01:00", 24.0, 25.0),
+    ("01:00 to 02:00", 25.0, 26.0),
+    ("after 02:00", 26.0, None),
+]
+
+# What each bucket reports. Sleep score is deliberately absent: Garmin derives
+# it from the same stages and stress this table already shows, so it would add
+# a column without adding a fact.
+BUCKET_METRICS = ["sleep_seconds", "rem_seconds", "resting_hr", "hrv_last_night"]
+
+
+def bedtime_hours(sleep_start_local: str | None) -> float | None:
+    """Sleep onset as hours past midnight, or None if it was not a night.
+
+    01:46 comes back as 25.77 and 23:30 as 23.5, so that "later" is always a
+    larger number and a night spanning midnight does not wrap around.
+    """
+    if not sleep_start_local:
+        return None
+    try:
+        clock = sleep_start_local[11:16]
+        hour, minute = int(clock[:2]), int(clock[3:5])
+    except (ValueError, IndexError):
+        return None
+    hours = hour + minute / 60
+    if NAP_ONSET_START <= hours < NAP_ONSET_END:
+        return None  # a daytime record: nap, flight, or sleeping off a night
+    return hours + 24 if hours < NAP_ONSET_START else hours
+
+
+def _trailing(
+    by_date: dict[str, float | None], day: date, window: int, minn: int
+) -> tuple[float | None, float | None]:
+    """Mean and standard deviation of the `window` days before `day`.
+
+    Excludes the day itself for the same reason `series()` does: a night
+    judged partly against itself is judged against a softer target.
+    """
+    history = [
+        v for back in range(1, window + 1)
+        if (v := by_date.get((day - timedelta(days=back)).isoformat())) is not None
+    ]
+    if len(history) < minn:
+        return None, None
+    mean = sum(history) / len(history)
+    sd = statistics.stdev(history) if len(history) > 1 else 0.0
+    return mean, sd
+
+
+def rough_nights(
+    conn: sqlite3.Connection, start: date, end: date, window: int | None = None
+) -> dict[str, Any]:
+    """Nights where REM collapsed while overnight stress climbed.
+
+    Every threshold is against his own trailing baseline rather than a
+    whole-history average, because a whole-history average is a stored
+    baseline in disguise: it changes as data arrives and it includes the night
+    being judged.
+
+    The heart rate figures in the result are a *finding*, not part of the
+    test. They are reported as distance from that night's own baseline.
+    """
+    window = window or config.BASELINE_WINDOW_DAYS
+    lookback = start - timedelta(days=window)
+    rows = conn.execute(
+        "SELECT date, sleep_stress_avg, rem_seconds, sleep_seconds, deep_seconds, "
+        "       resting_hr, hrv_last_night, respiration_avg, sleep_start_local "
+        "FROM daily WHERE date BETWEEN ? AND ? ORDER BY date",
+        (lookback.isoformat(), end.isoformat()),
+    ).fetchall()
+
+    cols = {c: {r["date"]: r[c] for r in rows} for c in
+            ("sleep_stress_avg", "rem_seconds", "resting_hr", "hrv_last_night")}
+
+    flagged: list[dict[str, Any]] = []
+    eligible = 0
+    for r in rows:
+        day = date.fromisoformat(r["date"])
+        if day < start or r["sleep_stress_avg"] is None or r["rem_seconds"] is None:
+            continue
+        stress_base, stress_sd = _trailing(cols["sleep_stress_avg"], day, window, MIN_BASELINE_DAYS)
+        rem_base, _ = _trailing(cols["rem_seconds"], day, window, MIN_BASELINE_DAYS)
+        if stress_base is None or rem_base is None:
+            continue  # no baseline yet: the night is not judged, not passed
+        eligible += 1
+
+        stressed = r["sleep_stress_avg"] >= stress_base + ROUGH_STRESS_SDS * (stress_sd or 0)
+        rem_down = r["rem_seconds"] <= ROUGH_REM_SHARE * rem_base
+        if not (stressed and rem_down):
+            continue
+
+        hr_base, _ = _trailing(cols["resting_hr"], day, window, MIN_BASELINE_DAYS)
+        hrv_base, _ = _trailing(cols["hrv_last_night"], day, window, MIN_BASELINE_DAYS)
+        flagged.append({
+            "date": r["date"],
+            "sleep_seconds": r["sleep_seconds"],
+            "deep_seconds": r["deep_seconds"],
+            "rem_seconds": r["rem_seconds"],
+            "rem_baseline": round(rem_base, 1),
+            "sleep_stress_avg": r["sleep_stress_avg"],
+            "sleep_stress_baseline": round(stress_base, 1),
+            "bedtime_hours": bedtime_hours(r["sleep_start_local"]),
+            "respiration_avg": r["respiration_avg"],
+            "resting_hr": r["resting_hr"],
+            "resting_hr_delta": _delta(r["resting_hr"], hr_base),
+            "hrv_last_night": r["hrv_last_night"],
+            "hrv_delta": _delta(r["hrv_last_night"], hrv_base),
+        })
+
+    return {
+        "nights": flagged,
+        "count": len(flagged),
+        "eligible": eligible,
+        "rate_pct": round(len(flagged) / eligible * 100, 1) if eligible else None,
+        "cost": {
+            "resting_hr": _round(_mean([f["resting_hr_delta"] for f in flagged])),
+            "hrv_last_night": _round(_mean([f["hrv_delta"] for f in flagged])),
+        },
+    }
+
+
+def _round(value: float | None, places: int = 1) -> float | None:
+    return round(value, places) if value is not None else None
+
+
+def _delta(value: float | None, base: float | None) -> float | None:
+    return round(float(value) - base, 1) if value is not None and base is not None else None
+
+
+def bedtime_table(
+    conn: sqlite3.Connection, start: date, end: date, window: int | None = None
+) -> dict[str, Any]:
+    """Every night in range bucketed by when he fell asleep.
+
+    Each bucket is reported twice, once over every night and once with the
+    rough nights taken out, because the two answer different questions. With
+    them in, the table shows what a late bedtime actually costs him. With them
+    out, it shows what the clock alone costs, and the two are not the same
+    shape: the rough nights bunch in the 01:00 to 02:00 hour.
+    """
+    window = window or config.BASELINE_WINDOW_DAYS
+    rough = rough_nights(conn, start, end, window)
+    rough_dates = {n["date"] for n in rough["nights"]}
+
+    rows = conn.execute(
+        "SELECT date, sleep_start_local, sleep_end_local, sleep_seconds, rem_seconds, "
+        "       resting_hr, hrv_last_night FROM daily "
+        "WHERE date BETWEEN ? AND ? AND sleep_start_local IS NOT NULL ORDER BY date",
+        (start.isoformat(), end.isoformat()),
+    ).fetchall()
+
+    nights = []
+    for r in rows:
+        onset = bedtime_hours(r["sleep_start_local"])
+        if onset is None:
+            continue
+        night = dict(r)
+        night["bedtime_hours"] = onset
+        night["rough"] = r["date"] in rough_dates
+        nights.append(night)
+
+    def summarise(group: list[dict[str, Any]]) -> dict[str, Any]:
+        out: dict[str, Any] = {"nights": len(group)}
+        enough = len(group) >= MIN_BUCKET_NIGHTS
+        for key in BUCKET_METRICS:
+            vals = [n[key] for n in group if n[key] is not None]
+            out[key] = round(sum(vals) / len(vals), 1) if (enough and vals) else None
+        # _clock, never bedtime_hours: onset is wrapped so that later is a
+        # larger number, which would turn a 05:30 wake into 29.5 and drag the
+        # average of the bucket by a full day.
+        wake = [_clock(n["sleep_end_local"]) for n in group]
+        wake = [w for w in wake if w is not None]
+        out["wake_hours"] = round(sum(wake) / len(wake), 2) if (enough and wake) else None
+        out["bedtime_hours"] = (
+            round(sum(n["bedtime_hours"] for n in group) / len(group), 2) if enough and group else None
+        )
+        out["enough"] = enough
+        return out
+
+    buckets = []
+    for label, lo, hi in BEDTIME_BUCKETS:
+        group = [n for n in nights
+                 if (lo is None or n["bedtime_hours"] >= lo)
+                 and (hi is None or n["bedtime_hours"] < hi)]
+        clean = [n for n in group if not n["rough"]]
+        buckets.append({
+            "label": label,
+            "from_hours": lo,
+            "to_hours": hi,
+            "rough_nights": len(group) - len(clean),
+            "rough_rate_pct": round((len(group) - len(clean)) / len(group) * 100)
+                              if group else None,
+            "all": summarise(group),
+            "clean": summarise(clean),
+        })
+
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "nights": len(nights),
+        "skipped_daytime": len(rows) - len(nights),
+        "min_bucket_nights": MIN_BUCKET_NIGHTS,
+        "buckets": buckets,
+        "rough": rough,
+    }
+
+
+def _clock(stamp: str | None) -> float | None:
+    """Wake time as hours past midnight. Unlike onset it never wraps: he has
+    not once woken before 06:00 in this archive, and if he ever does, the hour
+    is still the honest number to show."""
+    if not stamp:
+        return None
+    try:
+        return int(stamp[11:13]) + int(stamp[14:16]) / 60
+    except (ValueError, IndexError):
+        return None

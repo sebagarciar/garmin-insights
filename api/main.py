@@ -151,6 +151,22 @@ def activities(days: int = Query(30, ge=1, le=730)) -> list[dict[str, Any]]:
         c.close()
 
 
+@app.get("/api/sleep-timing")
+def sleep_timing(days: int = Query(90, ge=14, le=730)) -> dict[str, Any]:
+    """Nights bucketed by when he fell asleep, plus the rough-night flag.
+
+    One request rather than two: the bucket table needs to know which nights
+    were rough in order to report itself both ways, so splitting them into
+    separate endpoints would only make the front end recombine them.
+    """
+    start, end = window(days)
+    c = conn()
+    try:
+        return metrics.bedtime_table(c, start, end)
+    finally:
+        c.close()
+
+
 @app.get("/api/quality")
 def quality(days: int = Query(30, ge=1, le=730)) -> dict[str, Any]:
     start, end = window(days)

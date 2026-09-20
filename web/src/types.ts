@@ -91,3 +91,58 @@ export interface Activity {
   load: number | null
   load_basis: 'garmin' | 'estimated' | 'unknown'
 }
+
+export interface BucketSummary {
+  nights: number
+  enough: boolean
+  sleep_seconds: number | null
+  rem_seconds: number | null
+  resting_hr: number | null
+  hrv_last_night: number | null
+  bedtime_hours: number | null
+  wake_hours: number | null
+}
+
+export interface BedtimeBucket {
+  label: string
+  from_hours: number | null
+  to_hours: number | null
+  rough_nights: number
+  rough_rate_pct: number | null
+  /** Every night in the bucket: what a bedtime actually costs him. */
+  all: BucketSummary
+  /** The same bucket with rough nights removed: what the clock alone costs. */
+  clean: BucketSummary
+}
+
+export interface RoughNight {
+  date: string
+  sleep_seconds: number | null
+  deep_seconds: number | null
+  rem_seconds: number | null
+  rem_baseline: number
+  sleep_stress_avg: number
+  sleep_stress_baseline: number
+  bedtime_hours: number | null
+  respiration_avg: number | null
+  resting_hr: number | null
+  resting_hr_delta: number | null
+  hrv_last_night: number | null
+  hrv_delta: number | null
+}
+
+export interface SleepTiming {
+  start: string
+  end: string
+  nights: number
+  skipped_daytime: number
+  min_bucket_nights: number
+  buckets: BedtimeBucket[]
+  rough: {
+    nights: RoughNight[]
+    count: number
+    eligible: number
+    rate_pct: number | null
+    cost: { resting_hr: number | null; hrv_last_night: number | null }
+  }
+}

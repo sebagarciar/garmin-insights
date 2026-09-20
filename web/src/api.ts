@@ -1,7 +1,7 @@
 // Every call is relative: the Vite proxy handles it in development, FastAPI
 // serves both the UI and the API in normal use.
 
-import type { Activity, Correlation, MetricDef, Overview, Point, Status } from './types'
+import type { Activity, Correlation, MetricDef, Overview, Point, SleepTiming, Status } from './types'
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path)
@@ -13,6 +13,7 @@ export const getStatus = () => get<Status>('/api/status')
 export const getOverview = (days: number) => get<Overview>(`/api/overview?days=${days}`)
 export const getMetrics = () => get<MetricDef[]>('/api/metrics')
 export const getActivities = (days: number) => get<Activity[]>(`/api/activities?days=${days}`)
+export const getSleepTiming = (days: number) => get<SleepTiming>(`/api/sleep-timing?days=${days}`)
 
 export const getSeries = (metric: string, days: number) =>
   get<{ metric: string; definition: MetricDef; points: Point[] }>(

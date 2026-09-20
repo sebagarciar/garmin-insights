@@ -84,9 +84,10 @@ of his own sessions of that type, carries `load_basis = 'estimated'`, and is
 marked "est" in the table. The estimate is derived at read time, so it improves
 as more sessions arrive.
 
-`HR_MAX` in `.env` should be a measured peak taken from real hard sessions, not
-220-minus-age, which was meaningfully wrong here and overstated every load
-figure. It now feeds only the TRIMP figure kept for comparison, so it moves
+`HR_MAX` in `.env` is **204**, his own peak across 20 recorded activities and
+seen in five separate HIIT sessions. Not 220-minus-age, which says 188 and
+overstates every load figure. `.env.example` keeps a generic 190 because it is
+a template, not his number. It now feeds only the TRIMP figure kept for comparison, so it moves
 nothing the dashboard shows.
 
 ## Missing data is recorded, never a silent NULL
@@ -128,8 +129,8 @@ The stack is Vite + React + TypeScript + Recharts, matching his finance
 dashboard, with a thin FastAPI read layer over SQLite. The API holds no logic
 of its own; every number comes from `src/metrics.py`.
 
-`web/src/styles.css` is placeholder styling and is labelled as such. The class
-names and structure are the contract; the look is not designed yet.
+The visual layer was designed in a single pass on 20 Sep 2026. The section
+below is what that pass settled.
 
 ## The look is a Notion-derived system, and it is tokenised
 
@@ -148,7 +149,34 @@ series in every chart, and the focus ring. Nothing else. The sticker palette
 (pink, purple, sky, brown) never paints chrome and never appears in this app.
 
 **Three hues carry meaning, and only three.** The blue above, plus a status
-pair for "better than his normal" and "worse than his normal".
+pair for "better than your normal" and "worse than your normal".
+
+**Ink is near-black `#191817`, not `#000`.** Pure black on a warm paper canvas
+reads as a hole punched in the page.
+
+**The dashboard speaks to Seba, not about him.** "Where you are today", "your
+normal". The first version narrated him in the third person throughout and it
+was the single thing that made the page read as unfinished. Anything added
+later is written the same way.
+
+**The answer comes before the evidence.** The page opens with the one metric
+furthest from its own normal today, then the tally of better / worse / in
+line, and only then the grid. The method is a footnote at the bottom, not an
+opening paragraph. `readToday()` in `web/src/format.ts` derives the headline;
+it counts only metrics the API gave a deviation for, so the seven-reading
+baseline guard still holds.
+
+**Prose never outranks the number it describes.** The type scale is data-first:
+30px headline, 25px card figure, 19px section heading, 13px supporting copy.
+Section subtitles are one line or absent.
+
+**A metric card carries five things**: name, deviation, verdict, value vs
+baseline, sparkline. Nothing else. The date was a sixth and came out: it is
+stated once above the grid rather than ten times inside it.
+
+**No dark mode.** It is not a flip of this palette: it needs its own steps for
+the teal and the orange, revalidated against a dark surface. Not built, and
+not to be faked with `filter: invert`.
 
 ## Why "better" is teal and not green
 
@@ -189,11 +217,65 @@ named by its heading and gets none.
 numbers" toggle that swaps it for a table. A tooltip is never the only route
 to a value.
 
+**Dates on an axis are `27 Jun`, never `06/27`**, which half the world reads
+as 6 July.
+
+**Axis ticks are round numbers and the plot is full.** Recharts' `auto` domain
+rounds out to the next nice number, which left a quarter of the HRV plot empty
+above a series that peaks at 95. `niceAxis()` in `web/src/format.ts` picks a
+round step and snaps the domain to it, so the chart is both full and readable.
+
+**Only the latest point wears a dot.** A dot on every one of ninety days is a
+wall. The sparkline's dot takes the tone of today's verdict; the detail
+chart's stays blue.
+
+**The correlation scatter draws its least-squares fit**, dashed like every
+other reference series, because it only redraws what r already states. It is
+withheld under three points. The verdict ("No real relationship") leads and
+the coefficient supports it, so a reader who does not know what r = -0.07
+means still gets an answer.
+
 **A derived figure is withheld until it has the history it needs.** A baseline
 needs 7 real readings in its window; the acute:chronic ratio, before it was
 removed, needed 28 days behind it and 4 sessions inside them. Without those
 guards the start of any backfill produces confident numbers computed over days
 that do not exist. Apply the same rule to anything added later.
+
+## Bedtime is two findings, not one
+
+Added Sep 2026, in `metrics.bedtime_table()` and `metrics.rough_nights()`,
+behind `/api/sleep-timing`. The table and the flag are one endpoint because the
+table has to report itself both with and without the flagged nights.
+
+**Sleep duration and overnight physiology answer differently, so they are shown
+side by side and never averaged into one verdict.** Duration falls in a
+straight line from midnight, about half an hour lost per hour later, because
+wake time barely moves. Resting HR and HRV do not: with rough nights excluded
+they hold flat across before 00:00, 00-01 and 01-02, and step only after 02:00.
+
+**The step is at 02:00, not at 01:00.** The first pass read a cliff at 01:00.
+It was an artefact: rough nights bunch into the 01-02 bucket, and their cost
+was being read as the clock's. Exclude them and 01-02 is ordinary. Do not
+reinstate the 01:00 line.
+
+**A rough night is defined on sleep inputs only**: overnight stress a full
+standard deviation above his trailing 30 day normal *and* REM at or below 70%
+of it. Heart rate is deliberately not in the test, so the resting HR and HRV
+columns are a finding rather than a restatement of the definition. The first
+version used a whole-dataset z-score plus `sleep_score`, which is a stored
+baseline in disguise and Garmin-derived from the same signal. Both are gone.
+
+**Bedtime is hours past midnight with the wrap removed**, so 01:46 is 25.77 and
+later is always a larger number. Wake time is the plain clock and never wraps:
+using the wrapped form turned a 05:30 wake into 29.5 and dragged a whole
+bucket's average by most of a day. That bug shipped once.
+
+**A sleep record whose onset falls between 06:00 and 20:00 is a nap or a
+flight, not a night.** Two exist in the archive. They are excluded from the
+buckets and the count is shown in the caption rather than dropped quietly.
+
+`MIN_BUCKET_NIGHTS` is 7, matching `MIN_BASELINE_DAYS`: a bucket under it
+reports no average at all.
 
 ## Local only
 
@@ -244,7 +326,11 @@ is not the same as useful.
 
 ## Open questions, unanswered
 
+- **Inter is loaded from Google Fonts** in `web/index.html`, which contradicts
+  "the only network call this project makes is to Garmin Connect". Offline, the
+  whole type scale silently falls back to the system face. Self-hosting the
+  woff2 in `web/public` fixes both. Not done: it means downloading the font
+  files, which is Seba's call.
 - Which Ollama model for the weekly summary. `llama3.1:8b` is the default
   because the Kindle digest already uses it on this machine.
-- His real `HR_MAX`, which every training load number depends on.
 - How far back the backfill should go.
