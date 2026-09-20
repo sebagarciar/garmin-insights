@@ -31,10 +31,12 @@ export interface TooltipRow {
   label: string
   value: ReactNode
   color?: string
+  shape?: 'line' | 'block' | 'dashed'
 }
 
 /** One tooltip shape for every chart. Values sit in ink, with a small coloured
- *  swatch carrying identity, rather than colouring the text itself. */
+ *  swatch carrying identity, rather than colouring the text itself. A row with
+ *  no swatch (a derived figure, not a series) passes colour 'transparent'. */
 export function ChartTooltip({ title, rows }: { title: string; rows: TooltipRow[] }) {
   return (
     <div className="tooltip">
@@ -43,7 +45,8 @@ export function ChartTooltip({ title, rows }: { title: string; rows: TooltipRow[
         <div className="tooltip__row" key={r.label}>
           <span
             className="tooltip__swatch"
-            style={{ background: r.color ?? chartTokens.reference }}
+            data-shape={r.shape ?? 'line'}
+            style={r.shape === 'dashed' ? undefined : { background: r.color ?? chartTokens.reference }}
           />
           {r.label}
           <span className="tooltip__value">{r.value}</span>

@@ -1,12 +1,22 @@
 import { useState } from 'react'
+import type { Key } from 'react'
 import {
-  Area, Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine,
+  Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { deviationTone, formatValue, shortDate } from '../format'
+import { deviationTone, formatBare, fullDate, niceAxis, shortDate, verdictOf } from '../format'
 import { axisProps, chartTokens } from '../tokens'
 import { ChartTooltip, Legend } from './ChartBits'
 import type { MetricDef, Point } from '../types'
+
+/** Recharts hands a custom dot renderer a wide prop bag; these are the
+ *  three fields we use out of it. */
+interface DotProps {
+  key?: Key | null
+  cx?: number
+  cy?: number
+  payload?: { date: string }
+}
 
 /** The measured value against its own trailing baseline.
  *  Two series, so a legend is always shown. The baseline is drawn dashed
@@ -17,22 +27,30 @@ export function DeviationChart({ def, points }: { def: MetricDef; points: Point[
     displayValue: p.value === null ? null : p.value / (def.scale || 1),
     displayBaseline: p.baseline === null ? null : p.baseline / (def.scale || 1),
   }))
+  const lastReal = [...data].reverse().find((p) => p.displayValue !== null)
+  const yAxis = niceAxis(
+    data.flatMap((p) => [p.displayValue, p.displayBaseline]).filter((v): v is number => v !== null),
+  )
 
   return (
     <div className="chart">
-      <ResponsiveContainer width="100%" height={280}>
-        <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      <div className="chart__header">
+        <span className="eyebrow">Reading vs normal{def.unit ? ` · ${def.unit}` : ''}</span>
+      </div>
+
+      <ResponsiveContainer width="100%" height={260}>
+        <ComposedChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
           <CartesianGrid stroke={chartTokens.grid} vertical={false} />
-          <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={32} {...axisProps} />
-          <YAxis domain={['auto', 'auto']} width={48} {...axisProps} />
+          <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={44} {...axisProps} />
+          <YAxis domain={yAxis?.domain} ticks={yAxis?.ticks} width={40} {...axisProps} />
           <Tooltip
-            cursor={{ stroke: chartTokens.grid }}
+            cursor={{ stroke: chartTokens.gridStrong }}
             content={({ active, payload, label }) => {
               if (!active || !payload?.length) return null
               const row = payload[0].payload as (typeof data)[number]
               return (
                 <ChartTooltip
-                  title={String(label)}
+                  title={fullDate(String(label))}
                   rows={[
                     {
                       label: def.label,
@@ -40,12 +58,13 @@ export function DeviationChart({ def, points }: { def: MetricDef; points: Point[
                       value: row.displayValue === null ? 'no reading' : row.displayValue.toFixed(def.precision),
                     },
                     {
-                      label: 'his normal',
+                      label: 'your normal',
+                      shape: 'dashed',
                       value: row.displayBaseline === null ? '--' : row.displayBaseline.toFixed(def.precision),
                     },
                     {
-                      label: 'vs normal',
-                      color: chartTokens.surface,
+                      label: 'difference',
+                      color: 'transparent',
                       value: row.deviation_pct === null ? '--' : `${row.deviation_pct > 0 ? '+' : ''}${row.deviation_pct}%`,
                     },
                   ]}
@@ -53,21 +72,31 @@ export function DeviationChart({ def, points }: { def: MetricDef; points: Point[
               )
             }}
           />
-          <Area
+          <Line
             type="monotone" dataKey="displayBaseline" stroke={chartTokens.reference}
-            strokeWidth={1.5} strokeDasharray="4 4" fill={chartTokens.reference}
-            fillOpacity={0.07} isAnimationActive={false}
+            strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false}
           />
           <Line
             type="monotone" dataKey="displayValue" stroke={chartTokens.series} strokeWidth={2}
-            dot={false} connectNulls={false} isAnimationActive={false}
+            connectNulls={false} isAnimationActive={false}
+            dot={(props: DotProps) => {
+              // Only today is marked. A dot on all ninety would be a wall.
+              if (!lastReal || props.payload?.date !== lastReal.date) return <g key={props.key} />
+              return (
+                <circle
+                  key={props.key} cx={props.cx} cy={props.cy} r={3.5}
+                  fill={chartTokens.series} stroke={chartTokens.surface} strokeWidth={2}
+                />
+              )
+            }}
           />
         </ComposedChart>
       </ResponsiveContainer>
+
       <Legend
         entries={[
           { label: def.label, color: chartTokens.series },
-          { label: `his rolling normal`, color: chartTokens.reference, shape: 'dashed' },
+          { label: 'your rolling normal', color: chartTokens.reference, shape: 'dashed' },
         ]}
       />
       <p className="chart__caption">
@@ -89,7 +118,7 @@ export function DeviationBars({ def, points }: { def: MetricDef; points: Point[]
   return (
     <div className="chart">
       <div className="chart__header">
-        <span className="eyebrow">Distance from normal</span>
+        <span className="eyebrow">Distance from normal · %</span>
         <button className="button-utility" onClick={() => setShowTable((s) => !s)}>
           {showTable ? 'Show chart' : 'Show numbers'}
         </button>
@@ -99,15 +128,20 @@ export function DeviationBars({ def, points }: { def: MetricDef; points: Point[]
         <div className="table-scroll">
           <table className="data-table">
             <thead>
-              <tr><th>Date</th><th>{def.label}</th><th>Normal</th><th>Difference</th></tr>
+              <tr>
+                <th>Date</th>
+                <th className="num">{def.label}{def.unit ? ` (${def.unit})` : ''}</th>
+                <th className="num">Normal</th>
+                <th className="num">Difference</th>
+              </tr>
             </thead>
             <tbody>
               {[...points].reverse().map((p) => (
                 <tr key={p.date}>
-                  <td>{p.date}</td>
-                  <td>{formatValue(def, p.value)}</td>
-                  <td>{formatValue(def, p.baseline)}</td>
-                  <td>{p.deviation_pct === null ? '--' : `${p.deviation_pct > 0 ? '+' : ''}${p.deviation_pct}%`}</td>
+                  <td className="key">{fullDate(p.date)}</td>
+                  <td className="num">{formatBare(def, p.value)}</td>
+                  <td className="num">{formatBare(def, p.baseline)}</td>
+                  <td className="num">{p.deviation_pct === null ? '--' : `${p.deviation_pct > 0 ? '+' : ''}${p.deviation_pct}%`}</td>
                 </tr>
               ))}
             </tbody>
@@ -115,12 +149,12 @@ export function DeviationBars({ def, points }: { def: MetricDef; points: Point[]
         </div>
       ) : (
         <>
-          <ResponsiveContainer width="100%" height={180}>
-            <ComposedChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          <ResponsiveContainer width="100%" height={170}>
+            <ComposedChart data={points} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}>
               <CartesianGrid stroke={chartTokens.grid} vertical={false} />
-              <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={32} {...axisProps} />
-              <YAxis width={48} unit="%" {...axisProps} />
-              <ReferenceLine y={0} stroke={chartTokens.axis} />
+              <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={44} {...axisProps} />
+              <YAxis width={40} unit="%" tickCount={5} {...axisProps} />
+              <ReferenceLine y={0} stroke={chartTokens.reference} />
               <Tooltip
                 cursor={{ fill: 'rgba(0,0,0,0.03)' }}
                 content={({ active, payload, label }) => {
@@ -129,17 +163,18 @@ export function DeviationBars({ def, points }: { def: MetricDef; points: Point[]
                   const tone = deviationTone(def, row.deviation_pct)
                   return (
                     <ChartTooltip
-                      title={String(label)}
+                      title={fullDate(String(label))}
                       rows={[{
-                        label: tone === 'neutral' ? 'in line with normal' : tone === 'good' ? 'better than normal' : 'worse than normal',
+                        label: verdictOf(tone, row.deviation_pct),
                         color: tone === 'good' ? chartTokens.good : tone === 'bad' ? chartTokens.bad : chartTokens.reference,
+                        shape: 'block',
                         value: row.deviation_pct === null ? '--' : `${row.deviation_pct > 0 ? '+' : ''}${row.deviation_pct}%`,
                       }]}
                     />
                   )
                 }}
               />
-              <Bar dataKey="deviation_pct" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+              <Bar dataKey="deviation_pct" radius={2} maxBarSize={14} isAnimationActive={false}>
                 {points.map((p) => {
                   const tone = deviationTone(def, p.deviation_pct)
                   return (
@@ -154,8 +189,8 @@ export function DeviationBars({ def, points }: { def: MetricDef; points: Point[]
           </ResponsiveContainer>
           <Legend
             entries={[
-              { label: 'better than his normal', color: chartTokens.good, shape: 'block' },
-              { label: 'worse than his normal', color: chartTokens.bad, shape: 'block' },
+              { label: 'better than your normal', color: chartTokens.good, shape: 'block' },
+              { label: 'worse than your normal', color: chartTokens.bad, shape: 'block' },
               { label: 'within 3%, an ordinary day', color: chartTokens.reference, shape: 'block' },
             ]}
           />
