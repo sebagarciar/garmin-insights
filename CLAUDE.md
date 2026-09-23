@@ -11,6 +11,11 @@ project has already been made, it is written down below. Do not re-derive it.
 - `data/` — raw JSON archive and the SQLite database. Gitignored, always
 - `garmin-insights-prd.md` — the original brief
 
+## Repo
+
+Git repo `sebagarciar/garmin-insights` on GitHub, **public**. Commit to `main`.
+`data/` stays gitignored: his health data never goes to a public repo.
+
 ## Nothing in this project runs on a schedule
 
 There is no cron, no launchd job, no n8n, and no alerting. Seba decided this
@@ -23,7 +28,8 @@ a notifier or a background job, and do not propose one. Data arrives when the
 Sync button is pressed or `python -m src.ingest` is run.
 
 The PRD also cites the Kindle digest as "the n8n pattern". It is not: that
-project runs on launchd and talks to the Telegram API directly. n8n is not
+project is started by hand (a daily launchd job is planned, not installed) and
+talks to the Telegram API directly. n8n is not
 installed on this machine.
 
 ## The two layers, and why the raw one exists
