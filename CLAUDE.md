@@ -48,6 +48,13 @@ the archive. Fix `src/transform.py`, then:
 That rebuilds the database from disk with no network calls at all. No view,
 endpoint or chart ever reads the raw archive directly.
 
+**An archived day is final only once it is settled**: pulled after noon the
+following day (`SETTLED_HOUR` in `src/ingest.py`, judged by the file's
+modification time). Anything pulled earlier is fetched again on the next sync.
+Before this rule, a sync skipped any day already on disk, so 20 Sep 2026,
+pulled at 00:37 that morning, sat as "no reading" for a week. Do not go back
+to "skip if the file exists".
+
 ## Baselines are computed, never stored
 
 `src/metrics.py` derives every baseline, deviation and ratio at read time.

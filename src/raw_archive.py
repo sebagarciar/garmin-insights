@@ -10,7 +10,7 @@ operation; ingest.py replays them only when explicitly asked to.
 from __future__ import annotations
 
 import json
-from datetime import date as date_cls
+from datetime import date as date_cls, datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +38,14 @@ def read(day: str, endpoint: str) -> Any | None:
 
 def has(day: str, endpoint: str) -> bool:
     return path_for(day, endpoint).exists()
+
+
+def fetched_at(day: str, endpoint: str) -> datetime | None:
+    """When this payload was pulled from Garmin, local time. None if never."""
+    p = path_for(day, endpoint)
+    if not p.exists():
+        return None
+    return datetime.fromtimestamp(p.stat().st_mtime)
 
 
 def activity_archives() -> list[Path]:

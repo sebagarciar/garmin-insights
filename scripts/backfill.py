@@ -3,7 +3,7 @@
 
 Garmin is queried one day at a time and the unofficial API does not love
 being hammered, so this walks the range in blocks with a pause between them
-and skips days already in the raw archive. Interrupt it and run it again: it
+and skips days already settled in the raw archive. Interrupt it and run it again: it
 picks up where it stopped.
 
 Usage:

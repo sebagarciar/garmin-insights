@@ -14,7 +14,7 @@ import argparse
 import json
 import logging
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, time as dt_time, timedelta
 from typing import Any, Callable
 
 from garminconnect import (
@@ -72,11 +72,31 @@ def _is_empty(payload: Any) -> bool:
     return False
 
 
+# A day's payload is final only once it was pulled after noon the next day.
+# Pulled any earlier, the day was still running or the watch had not synced
+# it yet, and keeping that copy freezes a half-day as the permanent record.
+# 20 Sep 2026 was archived at 00:37 that morning and sat as "no reading" for
+# a week because the archive was trusted as it stood.
+SETTLED_HOUR = 12
+
+
+def is_settled(day: str, endpoint: str) -> bool:
+    fetched = raw_archive.fetched_at(day, endpoint)
+    if fetched is None:
+        return False
+    next_day = date.fromisoformat(day) + timedelta(days=1)
+    return fetched >= datetime.combine(next_day, dt_time(SETTLED_HOUR))
+
+
 def fetch_day(client, day: str, force: bool = False) -> dict[str, Any]:
-    """Fetch one day's endpoints and archive each response as it arrives."""
+    """Fetch one day's endpoints and archive each response as it arrives.
+
+    An archived payload is reused only if it is settled; anything pulled
+    before the day was over is fetched again.
+    """
     payloads: dict[str, Any] = {}
     for endpoint, (method, _required) in DAILY_ENDPOINTS.items():
-        if not force and raw_archive.has(day, endpoint):
+        if not force and is_settled(day, endpoint):
             payloads[endpoint] = raw_archive.read(day, endpoint)
             continue
         try:
