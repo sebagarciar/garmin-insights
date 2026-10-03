@@ -2,6 +2,9 @@
 data/
 logs/
 .env
+# Findings drawn from his data: local only
+NOTES.md
+recommendations.md
 
 .venv/
 __pycache__/
