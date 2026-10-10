@@ -1,16 +1,16 @@
-# garmin — read before touching this project
+# garmin: read before touching this project
 
 Seba's Garmin data, pulled onto his own laptop and turned into insight rather
 than another set of charts. One file, one place: if a decision about this
 project has already been made, it is written down below. Do not re-derive it.
 
-- `src/` — ingestion, storage, and the maths behind every number
-- `api/` — the FastAPI read layer the dashboard talks to
-- `web/` — the React dashboard
-- `scripts/` — login, backfill, and the one command that starts everything
-- `data/` — raw JSON archive and the SQLite database. Gitignored, always
-- `garmin-insights-prd.md` — the original brief
-- `NOTES.md` — local only, gitignored. What his own data showed, the backstory of the
+- `src/`: ingestion, storage, and the maths behind every number
+- `api/`: the FastAPI read layer the dashboard talks to
+- `web/`: the React dashboard
+- `scripts/`: login, backfill, and the one command that starts everything
+- `data/`: raw JSON archive and the SQLite database. Gitignored, always
+- `garmin-insights-prd.md`: the original brief
+- `NOTES.md`: local only, gitignored. What his own data showed, the backstory of the
   decisions below, and where things stood. Read it before changing any metric, threshold
   or chart. `recommendations.md` (also local only) is the write-up of those findings for him.
 
@@ -98,59 +98,11 @@ The PRD said Streamlit; dropped before any code because Streamlit renders its ow
 Vite + React + TypeScript + Recharts, matching his finance dashboard, over a thin FastAPI
 read layer. The API holds no logic; every number comes from `src/metrics.py`.
 
-## The look is a Notion-derived system, and it is tokenised
+## Design and chart rules
 
-- `web/src/styles.css` holds every value as a CSS custom property; components never use raw
-  hex. `web/src/tokens.ts` mirrors the colours Recharts needs as real values. Change both.
-- Warm paper canvas `#f6f5f4`, white cards, 1px `#e6e6e6` hairlines, 12px radius, elevation
-  from many near-transparent layers. Inter with negative tracking set at every heading size.
-- **One structural accent.** `#0075de` paints the Sync button, the measured series in every
-  chart, and the focus ring. Nothing else. The sticker palette (pink, purple, sky, brown)
-  never appears in this app.
-- **Three hues carry meaning, and only three**: that blue, plus the better/worse pair below.
-- **Ink is near-black `#191817`**, never `#000`.
-- **The dashboard speaks to Seba, not about him.** "Where you are today", "your normal".
-  Never third person.
-- **The answer comes before the evidence.** The page opens with the metric furthest from its
-  normal today, then the better / worse / in line tally, then the grid. Method is a footnote.
-  `readToday()` in `web/src/format.ts` counts only metrics the API gave a deviation for.
-- **Prose never outranks the number.** 30px headline, 25px card figure, 19px section
-  heading, 13px supporting copy. Section subtitles are one line or absent.
-- **A metric card carries five things**: name, deviation, verdict, value vs baseline,
-  sparkline. The date is stated once above the grid.
-- **No dark mode.** It needs its own teal and orange steps; never fake it with `filter: invert`.
-
-## Why "better" is teal and not green
-
-Sticker green against sticker orange collapses to a colour difference of 1.7 under
-protanopia: a red-blind reader could not tell a good day from a bad one. The pair is
-`#008b7d` (teal, deepened to clear the chroma floor and 4:1 contrast) against `#dd5b00`,
-which separates by 12.1 and passes all six palette checks. Verify changes with the validator:
-
-```bash
-node scripts/validate_palette.js "#0075de,#008b7d,#dd5b00" --mode light --surface "#ffffff"
-```
-
-Colour never carries a verdict alone: every card shows an arrow and "better than normal" /
-"worse than normal", and the deviation chart says which direction is good for that metric.
-
-## Chart rules that are not negotiable
-
-- **No dual-axis charts.** Two scales aligned arbitrarily invent a relationship.
-- **Grids are solid hairlines.** Dashes are reserved for reference series that are not
-  measurements: the rolling baseline, the 28-day average, the least-squares fit.
-- **A legend whenever two or more series are drawn.** A single series gets none.
-- **Every chart has a way to read the numbers.** "Show numbers" swaps the detail chart for a
-  table. A tooltip is never the only route to a value.
-- **Dates on an axis are `27 Jun`, never `06/27`.**
-- **Round ticks, full plot.** `niceAxis()` in `web/src/format.ts` snaps the domain to a round
-  step; Recharts' `auto` left a quarter of a plot empty.
-- **Only the latest point wears a dot.** The sparkline's dot takes today's verdict tone; the
-  detail chart's stays blue.
-- **The correlation scatter draws its least-squares fit**, withheld under three points. The
-  verdict ("No real relationship") leads and r supports it.
-- **A derived figure is withheld until it has the history it needs** (7 readings for a
-  baseline). Apply the same guard to anything added later.
+The look, the colour system and the chart rules are in `web/DESIGN.md`. Read it before
+changing any colour, chart or card. Headline rules: one blue accent, teal and orange carry
+better/worse, no dual-axis charts, and every chart has a way to read the numbers.
 
 ## Sleep timing
 

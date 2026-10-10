@@ -30,7 +30,7 @@
      colour-blind reader (delta E 1.7 under protanopia, i.e. identical). This is
      the sticker teal deepened until it clears the chroma floor and 4:1 on both
      surfaces, which keeps "better" and "worse" apart for every reader.
-     Verified with scripts/validate_palette.js: all six checks pass, worst
+     Verified with the dataviz skill's validate_palette.js: all six checks pass, worst
      adjacent pair 12.1 under protanopia. */
   --good: #008b7d;
   --good-soft: rgba(0, 139, 125, 0.10);
